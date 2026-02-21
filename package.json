@@ -1,0 +1,38 @@
+{
+  "name": "early-tags-launcher",
+  "version": "1.0.0",
+  "description": "Early Tags VR Launcher",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.earlytags.launcher",
+    "productName": "Early Tags Launcher",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [ "nsis" ],
+      "icon": "assets/icon.ico",
+      "artifactName": "EarlyTagsLauncher-Setup-${version}.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Tdizdollar",
+      "repo": "EarlyTags"
+    }
+  }
+}
