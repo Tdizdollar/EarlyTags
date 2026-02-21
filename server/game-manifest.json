@@ -1,72 +1,36 @@
 {
-  "_comment": "Host this file at: https://yourdomain.com/game/manifest.json",
-  "_comment2": "Update latestVersion and downloadUrl whenever you release a new game version.",
-  "_comment3": "Launcher will check this on every open and compare with locally installed version.",
+  "latestVersion": "1.0.0",
+  "downloadUrl": "https://mega.nz/file/YQ8DmCCR#UHUTW8fCodmuf-5JEtCb9GoXWFeipAJwkmaU0lnHuyQ",
+  "downloadSize": "— MB",
+  "totalSize": 0,
 
-  "games": [
+  "changelog": [
     {
-      "id": "early-tags-vr",
-      "name": "EARLY TAGS VR",
-      "badge": "⚡ VR EXPERIENCE",
-      "description": "Early Tags VR is a fast-paced multiplayer tag game built for SteamVR. Hunt or be hunted in detailed virtual arenas.",
-      "icon": "🥽",
-      "heroImage": "",
-      "tags": ["SteamVR", "Multiplayer", "Action"],
-
-      "steamAppId": "123456789",
-
-      "latestVersion": "1.2.0",
-      "downloadUrl": "https://yourdomain.com/game/early-tags-vr-1.2.0.zip",
-      "downloadSize": "520 MB",
-      "totalSize": 545259520,
-
-      "changelog": [
+      "version": "1.0.0",
+      "date": "2025-02-20",
+      "changes": [
         {
-          "version": "1.2.0",
-          "date": "2024-12-15",
-          "changes": [
-            { "type": "new", "text": "Added new arena map: Neon District" },
-            { "type": "new", "text": "Improved SteamVR hand tracking precision" },
-            { "type": "fix", "text": "Fixed multiplayer desync on high-latency connections" },
-            { "type": "fix", "text": "Performance improvements on Quest Link" }
-          ]
-        },
-        {
-          "version": "1.1.0",
-          "date": "2024-11-28",
-          "changes": [
-            { "type": "new", "text": "Lobby system overhaul with friend invite support" },
-            { "type": "fix", "text": "Fixed crash on SteamVR startup" },
-            { "type": "fix", "text": "Reduced base install size by 800 MB" }
-          ]
-        },
-        {
-          "version": "1.0.0",
-          "date": "2024-10-10",
-          "changes": [
-            { "type": "new", "text": "Initial release" }
-          ]
+          "type": "new",
+          "text": "Initial release"
         }
-      ],
-
-      "systemRequirements": {
-        "minimum": {
-          "OS": "Windows 10",
-          "CPU": "Intel i5-8400",
-          "RAM": "8 GB",
-          "GPU": "GTX 1060 6GB",
-          "VRAM": "6 GB",
-          "VR": "SteamVR Compatible"
-        },
-        "recommended": {
-          "OS": "Windows 11",
-          "CPU": "Intel i7-11700K",
-          "RAM": "16 GB",
-          "GPU": "RTX 3070",
-          "VRAM": "8 GB",
-          "VR": "SteamVR Compatible"
-        }
-      }
+      ]
     }
-  ]
+  ],
+
+  "systemRequirements": {
+    "minimum": {
+      "OS": "Windows 10",
+      "CPU": "Intel i5-8400",
+      "RAM": "8 GB",
+      "GPU": "GTX 1060 6GB",
+      "VR": "SteamVR Compatible"
+    },
+    "recommended": {
+      "OS": "Windows 11",
+      "CPU": "Intel i7-11700K",
+      "RAM": "16 GB",
+      "GPU": "RTX 3070",
+      "VR": "SteamVR Compatible"
+    }
+  }
 }
