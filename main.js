@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const { randomUUID } = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -8,7 +9,6 @@ const { exec, spawn, execSync } = require('child_process');
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const GAME_MANIFEST_URL = 'https://tdizdollar.github.io/EarlyTags/server/game-manifest.json';
-// Game extracts into an OldTag subfolder, exe lives inside that
 const GAME_SUBFOLDER = 'OldTag';
 const GAME_EXE_NAME = 'Old Tag.exe';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,16 +37,31 @@ function getInstallDir() {
     return loadSettings().installDir || DEFAULT_GAMES_DIR;
 }
 
-// Returns the full path to the game exe:
-// e.g. D:\vs\EarlyTagGame\OldTag\Old Tag.exe
+// Returns full path to the game exe
+// e.g. C:\Program Files\Early Tags\OldTag\Old Tag.exe
 function getGameExePath() {
     return path.join(getInstallDir(), GAME_SUBFOLDER, GAME_EXE_NAME);
 }
 
-// Returns the folder the exe sits in (used as cwd for Unity):
-// e.g. D:\vs\EarlyTagGame\OldTag
+// Returns the folder the exe sits in (Unity needs this as cwd)
+// e.g. C:\Program Files\Early Tags\OldTag
 function getGameDir() {
     return path.join(getInstallDir(), GAME_SUBFOLDER);
+}
+
+// ─── PCID ─────────────────────────────────────────────────────────────────────
+// Generates a permanent unique ID for this PC player on first launch.
+// Stored in settings.json — survives game reinstalls.
+// Passed to the game as --pcid argument so it can auth with PlayFab.
+function getPCID() {
+    const settings = loadSettings();
+    if (settings.pcid) return settings.pcid;
+
+    // First time — generate a new permanent UUID for this player
+    const newID = randomUUID().replace(/-/g, '').toUpperCase();
+    saveSettings({ ...settings, pcid: newID });
+    console.log('Generated new PCID:', newID);
+    return newID;
 }
 
 // ─── WINDOW ───────────────────────────────────────────────────────────────────
@@ -161,9 +176,8 @@ ipcMain.handle('get-game-state', async () => {
     if (!fs.existsSync(statePath)) return { installed: false };
     try {
         const d = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-        // Also verify the exe actually exists
-        const exeExists = fs.existsSync(getGameExePath());
-        if (!exeExists) return { installed: false };
+        // Also verify exe exists — catches broken installs
+        if (!fs.existsSync(getGameExePath())) return { installed: false };
         return { installed: true, version: d.version, installPath: installDir };
     } catch { return { installed: false }; }
 });
@@ -310,9 +324,11 @@ ipcMain.handle('launch-game', async () => {
     return new Promise(async (resolve, reject) => {
         const gameExePath = getGameExePath();
         const gameDir = getGameDir();
+        const pcid = getPCID(); // Get or create permanent player ID
 
         console.log('Launching game from:', gameExePath);
-        console.log('Working directory:', gameDir);
+        console.log('Game working dir:', gameDir);
+        console.log('PCID:', pcid.substring(0, 8) + '...');
 
         if (!fs.existsSync(gameExePath)) {
             return reject(new Error(
@@ -324,7 +340,7 @@ ipcMain.handle('launch-game', async () => {
         await shell.openExternal('steam://run/250820');
         await new Promise(r => setTimeout(r, 4000));
 
-        // Force SteamVR OpenXR runtime
+        // Force SteamVR OpenXR runtime so Quest Link doesn't hijack it
         const steamVRRuntimePath = findSteamVRRuntime();
         const env = { ...process.env };
         if (steamVRRuntimePath) {
@@ -334,14 +350,15 @@ ipcMain.handle('launch-game', async () => {
             console.warn('SteamVR runtime not found — using system default');
         }
 
-        // Launch the game exe
-        // cwd must be the folder containing the exe so Unity can find its _Data folder
-        gameProcess = spawn(`"${gameExePath}"`, [], {
+        // Pass PCID to the game as a command line argument.
+        // The game's PCVRAuthenticator.cs reads --pcid and uses it to auth with PlayFab.
+        // If someone runs the exe directly without --pcid they get blocked.
+        gameProcess = spawn(`"${gameExePath}"`, ['--pcid', pcid], {
             detached: true,
             stdio: 'ignore',
             env: env,
             shell: true,
-            cwd: gameDir,
+            cwd: gameDir, // Unity requires cwd = folder containing the exe
         });
 
         gameProcess.unref();
@@ -362,7 +379,6 @@ ipcMain.handle('close-game', async () => {
             gameProcess = null;
             return resolve({ success: true });
         }
-        // Fallback: kill by exe name
         exec(`taskkill /F /IM "Old Tag.exe"`, (err) => {
             resolve({ success: !err });
         });
