@@ -1,142 +1,213 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:;">
-<title>EARLY TAGS — Launcher</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;700&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <title>EARLY TAGS — Launcher</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;700&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="bgCanvas"></canvas>
-<div class="scanlines"></div>
-<div class="center-glow"></div>
-<div class="corner tl"></div>
-<div class="corner tr"></div>
-<div class="corner bl"></div>
-<div class="corner br"></div>
+    <canvas id="bgCanvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="center-glow"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
 
-<!-- LAUNCHER UPDATE MODAL -->
-<div class="modal-overlay" id="launcherUpdateModal">
-  <div class="modal">
-    <div class="modal-eyebrow">System Alert</div>
-    <div class="modal-title">Update<br>Required</div>
-    <div class="modal-subtitle" id="updateSubtitle">Checking for updates...</div>
-    <div class="modal-warning-box">⚠ YOU CANNOT USE THE LAUNCHER WITHOUT UPDATING</div>
-    <div class="modal-body-text">
-      A mandatory update is available. This may include critical patches,
-      security fixes, or changes required for the latest game version.
-    </div>
-    <div class="modal-progress" id="launcherProgress">
-      <div class="modal-progress-label">
-        <span>Downloading update...</span>
-        <span id="launcherProgressPct">0%</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill" id="launcherProgressFill"></div></div>
-    </div>
-    <div class="modal-ready-msg" id="launcherReadyMsg">✓ READY — WILL RESTART LAUNCHER</div>
-    <div class="modal-actions">
-      <button class="modal-btn-primary" id="launcherUpdateBtn" onclick="handleLauncherUpdate()">UPDATE NOW</button>
-      <button class="modal-btn-secondary" onclick="window.launcher.close()">EXIT</button>
-    </div>
-  </div>
-</div>
-
-<!-- CHANGELOG DRAWER -->
-<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer(event)">
-  <div class="drawer">
-    <div class="drawer-inner">
-      <div class="drawer-header">
-        <div class="drawer-title">CHANGELOG</div>
-        <button class="drawer-close" onclick="closeDrawer()">CLOSE ✕</button>
-      </div>
-      <div class="changelog-grid" id="changelogContent">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px">LOADING...</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- TITLEBAR -->
-<div class="titlebar">
-  <div class="tb-left">
-    <div class="tb-logo">EARLY TAGS</div>
-    <div class="tb-version" id="launcherVerDisplay">LAUNCHER v1.0.0</div>
-  </div>
-  <div class="tb-right">
-    <div class="tb-nav">
-      <button class="tb-nav-btn" onclick="openDrawer()">Changelog</button>
-      <button class="tb-nav-btn" onclick="window.launcher.openExternal('https://discord.gg/yourserver')">Discord</button>
-    </div>
-    <div class="window-btns">
-      <div class="wb wb-close" onclick="window.launcher.close()"></div>
-      <div class="wb wb-min"   onclick="window.launcher.minimize()"></div>
-      <div class="wb wb-max"   onclick="window.launcher.maximize()"></div>
-    </div>
-  </div>
-</div>
-
-<!-- MAIN STAGE -->
-<div class="stage">
-  <div class="title-zone">
-    <div class="pre-tag">SteamVR &nbsp;·&nbsp; Multiplayer &nbsp;·&nbsp; Action</div>
-    <div class="game-title">EARLY<br><span class="word-2">TAGS</span></div>
-    <div class="title-rule"></div>
-    <div class="tags-row">
-      <span class="tag">VR Experience</span>
-      <span class="tag">2.4 GB</span>
-      <span class="tag" id="stripGameVerTag">v1.2.0 Latest</span>
-      <span class="tag">PC / SteamVR</span>
-    </div>
-  </div>
-
-  <div class="action-zone">
-    <div class="status-line">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText" class="status-text-label">LOADING...</span>
+    <!-- LAUNCHER UPDATE MODAL -->
+    <div class="modal-overlay" id="launcherUpdateModal">
+        <div class="modal">
+            <div class="modal-eyebrow">System Alert</div>
+            <div class="modal-title">Update<br>Required</div>
+            <div class="modal-subtitle" id="updateSubtitle">Checking for updates...</div>
+            <div class="modal-warning-box">⚠ YOU CANNOT USE THE LAUNCHER WITHOUT UPDATING</div>
+            <div class="modal-body-text">A mandatory update is available. This may include critical patches, security fixes, or changes required for the latest game version.</div>
+            <div class="modal-progress" id="launcherProgress">
+                <div class="modal-progress-label">
+                    <span>Downloading update...</span>
+                    <span id="launcherProgressPct">0%</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="launcherProgressFill"></div></div>
+            </div>
+            <div class="modal-ready-msg" id="launcherReadyMsg">✓ READY — WILL RESTART LAUNCHER</div>
+            <div class="modal-actions">
+                <button class="modal-btn-primary" id="launcherUpdateBtn" onclick="handleLauncherUpdate()">UPDATE NOW</button>
+                <button class="modal-btn-secondary" onclick="window.launcher.close()">EXIT</button>
+            </div>
+        </div>
     </div>
 
-    <button class="btn-main" id="btnMain" onclick="handleMainAction()">
-      <span id="btnMainText">LOADING</span>
-    </button>
-
-    <div class="progress-zone hidden" id="progressZone">
-      <div class="progress-track">
-        <div class="progress-fill" id="dlFill"></div>
-      </div>
-      <div class="progress-label">
-        <span id="dlLabel">DOWNLOADING...</span>
-        <span class="pct" id="dlPct">0%</span>
-      </div>
+    <!-- UNINSTALL CONFIRM MODAL -->
+    <div class="modal-overlay" id="uninstallModal">
+        <div class="modal">
+            <div class="modal-eyebrow">Danger Zone</div>
+            <div class="modal-title">Uninstall<br>Game?</div>
+            <div class="modal-subtitle" id="uninstallPath">All game files will be deleted</div>
+            <div class="modal-warning-box">⚠ THIS CANNOT BE UNDONE — ALL FILES WILL BE DELETED</div>
+            <div class="modal-body-text">This will delete all game files from your install directory. Your launcher settings will not be affected. You can reinstall at any time.</div>
+            <div class="modal-actions">
+                <button class="modal-btn-danger" onclick="confirmUninstall()">UNINSTALL</button>
+                <button class="modal-btn-secondary" onclick="document.getElementById('uninstallModal').classList.remove('show')">CANCEL</button>
+            </div>
+        </div>
     </div>
 
-    <div class="secondary-btns" id="secondaryBtns" style="display:none">
-      <button class="btn-small">⚙ SETTINGS</button>
-      <button class="btn-small" onclick="window.launcher.openExternal('file://' + '')">↗ FILES</button>
-      <button class="btn-close-game hidden" id="btnCloseGame" onclick="handleCloseGame()">
-        <span>⏹ CLOSE GAME</span>
-      </button>
+    <!-- CHANGELOG DRAWER -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer(event)">
+        <div class="drawer">
+            <div class="drawer-inner">
+                <div class="drawer-header">
+                    <div class="drawer-title">CHANGELOG</div>
+                    <button class="drawer-close" onclick="closeDrawer()">CLOSE ✕</button>
+                </div>
+                <div class="changelog-grid" id="changelogContent">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px">LOADING...</div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
-</div>
 
-<!-- BOTTOM INFO STRIP -->
-<div class="info-strip">
-  <div class="strip-left">
-    <div class="strip-item">GAME&nbsp;<span id="stripGameVer">—</span></div>
-    <div class="strip-divider"></div>
-    <div class="strip-item">SIZE&nbsp;<span>2.4 GB</span></div>
-    <div class="strip-divider"></div>
-    <div class="strip-item">STATUS&nbsp;<span id="stripStatus">LOADING</span></div>
-  </div>
-  <div class="strip-right">
-    <button class="strip-changelog-btn" onclick="openDrawer()">VIEW CHANGELOG</button>
-    <div class="strip-divider"></div>
-    <div class="strip-item">LAUNCHER&nbsp;<span id="launcherVerStrip">v1.0.0</span></div>
-  </div>
-</div>
+    <!-- SETTINGS PANEL -->
+    <div class="settings-overlay" id="settingsOverlay" onclick="closeSettings(event)">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <div class="settings-title">SETTINGS</div>
+                <button class="drawer-close" onclick="closeSettings()">CLOSE ✕</button>
+            </div>
 
-<script src="renderer.js"></script>
+            <div class="settings-section">
+                <div class="settings-section-label">INSTALL LOCATION</div>
+                <div class="settings-section-desc">Where your game files are downloaded and stored.</div>
+                <div class="settings-path-row">
+                    <div class="settings-path-display" id="installDirDisplay">Loading...</div>
+                    <button class="settings-browse-btn" onclick="browseInstallDir()">BROWSE</button>
+                </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-section" id="reinstallSection" style="display:none">
+                <div class="settings-warning-box">⚠ CHANGING LOCATION REQUIRES A REINSTALL</div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-section">
+                <div class="settings-section-label">ABOUT</div>
+                <div class="settings-about-row">
+                    <span class="settings-about-key">Launcher Version</span>
+                    <span class="settings-about-val" id="settingsLauncherVer">—</span>
+                </div>
+                <div class="settings-about-row">
+                    <span class="settings-about-key">Game Version</span>
+                    <span class="settings-about-val" id="settingsGameVer">—</span>
+                </div>
+                <div class="settings-about-row">
+                    <span class="settings-about-key">Install Path</span>
+                    <span class="settings-about-val" id="settingsInstallPath" style="word-break:break-all">—</span>
+                </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- UNINSTALL GAME -->
+            <div class="settings-section" id="uninstallSection" style="display:none">
+                <div class="settings-section-label">DANGER ZONE</div>
+                <div class="settings-section-desc">Permanently delete all game files from your PC.</div>
+                <button class="settings-uninstall-btn" onclick="promptUninstall()">⚠ UNINSTALL GAME</button>
+            </div>
+
+            <div class="settings-actions">
+                <button class="settings-save-btn" id="settingsSaveBtn" onclick="saveSettings()">SAVE CHANGES</button>
+                <button class="settings-cancel-btn" onclick="closeSettings()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TITLEBAR -->
+    <div class="titlebar">
+        <div class="tb-left">
+            <div class="tb-logo">EARLY TAGS</div>
+            <div class="tb-version" id="launcherVerDisplay">LAUNCHER v1.0.0</div>
+        </div>
+        <div class="tb-right">
+            <div class="tb-nav">
+                <button class="tb-nav-btn" onclick="openDrawer()">Changelog</button>
+                <button class="tb-nav-btn" onclick="openSettings()">Settings</button>
+                <button class="tb-nav-btn" onclick="window.launcher.openExternal('https://discord.gg/yourserver')">Discord</button>
+            </div>
+            <div class="window-btns">
+                <div class="wb wb-close" onclick="window.launcher.close()"></div>
+                <div class="wb wb-min" onclick="window.launcher.minimize()"></div>
+                <div class="wb wb-max" onclick="window.launcher.maximize()"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN STAGE -->
+    <div class="stage">
+        <div class="title-zone">
+            <div class="pre-tag">SteamVR &nbsp;·&nbsp; Multiplayer &nbsp;·&nbsp; Action</div>
+            <div class="game-title">EARLY<br><span class="word-2">TAGS</span></div>
+            <div class="title-rule"></div>
+            <div class="tags-row">
+                <span class="tag">VR Experience</span>
+                <span class="tag">PC / SteamVR</span>
+                <span class="tag" id="stripGameVerTag">v1.0.0 Latest</span>
+            </div>
+        </div>
+
+        <div class="action-zone">
+            <div class="status-line">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText" class="status-text-label">LOADING...</span>
+            </div>
+
+            <button class="btn-main" id="btnMain" onclick="handleMainAction()">
+                <span id="btnMainText">LOADING</span>
+            </button>
+
+            <div class="progress-zone hidden" id="progressZone">
+                <div class="progress-track">
+                    <div class="progress-fill" id="dlFill"></div>
+                </div>
+                <div class="progress-label">
+                    <span id="dlLabel">DOWNLOADING...</span>
+                    <span class="pct" id="dlPct">0%</span>
+                </div>
+            </div>
+
+            <div class="secondary-btns" id="secondaryBtns" style="display:none">
+                <button class="btn-small" onclick="openSettings()">⚙ SETTINGS</button>
+                <button class="btn-small" onclick="openInstallFolder()">↗ FILES</button>
+                <button class="btn-close-game hidden" id="btnCloseGame" onclick="handleCloseGame()">
+                    <span>⏹ CLOSE GAME</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM INFO STRIP -->
+    <div class="info-strip">
+        <div class="strip-left">
+            <div class="strip-item">GAME&nbsp;<span id="stripGameVer">—</span></div>
+            <div class="strip-divider"></div>
+            <div class="strip-item">STATUS&nbsp;<span id="stripStatus">LOADING</span></div>
+            <div class="strip-divider"></div>
+            <div class="strip-item">PATH&nbsp;<span id="stripInstallDir" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span></div>
+        </div>
+        <div class="strip-right">
+            <button class="strip-changelog-btn" onclick="openDrawer()">CHANGELOG</button>
+            <div class="strip-divider"></div>
+            <button class="strip-changelog-btn" onclick="openSettings()">SETTINGS</button>
+            <div class="strip-divider"></div>
+            <div class="strip-item">LAUNCHER&nbsp;<span id="launcherVerStrip">v1.0.0</span></div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
 </body>
 </html>

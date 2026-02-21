@@ -1,283 +1,356 @@
-// ═══ RENDERER.JS — Single-game launcher ═══════════════════════════════════════
-// All Electron APIs accessed through window.launcher (preload.js)
+// ═══ RENDERER.JS ══════════════════════════════════════════════════════════════
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
 const S = {
-  appState: 'loading',   // loading | play | update | install | installing | running
-  manifest: null,
-  localState: null,      // { installed, version, installPath }
-  gameRunning: false,
-  closeGameTimer: null,
-  launcherUpdateState: 'idle', // idle | available | downloading | ready
-  launcherVersion: '1.0.0',
+    appState: 'loading',
+    manifest: null,
+    localState: null,
+    gameRunning: false,
+    closeGameTimer: null,
+    launcherUpdateState: 'idle',
+    launcherVersion: '1.0.0',
+    settings: { installDir: '' },
+    pendingInstallDir: null,
 };
 
-// ─── DOM REFS ─────────────────────────────────────────────────────────────────
-const el = {
-  btnMain:        () => document.getElementById('btnMain'),
-  btnMainText:    () => document.getElementById('btnMainText'),
-  statusDot:      () => document.getElementById('statusDot'),
-  statusText:     () => document.getElementById('statusText'),
-  progressZone:   () => document.getElementById('progressZone'),
-  dlFill:         () => document.getElementById('dlFill'),
-  dlPct:          () => document.getElementById('dlPct'),
-  dlLabel:        () => document.getElementById('dlLabel'),
-  secondaryBtns:  () => document.getElementById('secondaryBtns'),
-  btnCloseGame:   () => document.getElementById('btnCloseGame'),
-  stripStatus:    () => document.getElementById('stripStatus'),
-  stripGameVer:   () => document.getElementById('stripGameVer'),
-  launcherVerDisplay: () => document.getElementById('launcherVerDisplay'),
-  launcherUpdateModal: () => document.getElementById('launcherUpdateModal'),
-  launcherProgress: () => document.getElementById('launcherProgress'),
-  launcherProgressFill: () => document.getElementById('launcherProgressFill'),
-  launcherProgressPct: () => document.getElementById('launcherProgressPct'),
-  launcherUpdateBtn: () => document.getElementById('launcherUpdateBtn'),
-  launcherReadyMsg: () => document.getElementById('launcherReadyMsg'),
-  drawerOverlay:  () => document.getElementById('drawerOverlay'),
-  updateSubtitle: () => document.getElementById('updateSubtitle'),
-};
+// ─── NOISE CANVAS ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+function drawNoise() {
+    resizeCanvas();
+    const idata = ctx.createImageData(canvas.width, canvas.height);
+    const buf = idata.data;
+    for (let i = 0; i < buf.length; i += 4) {
+        const v = Math.random() * 255 | 0;
+        buf[i] = buf[i + 1] = buf[i + 2] = v; buf[i + 3] = 255;
+    }
+    ctx.putImageData(idata, 0, 0);
+}
+drawNoise();
+setInterval(drawNoise, 100);
+window.addEventListener('resize', resizeCanvas);
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  // Show launcher version
-  const v = await window.launcher.getVersion();
-  S.launcherVersion = v;
-  el.launcherVerDisplay().textContent = `LAUNCHER v${v}`;
-  document.querySelector('.tb-version').textContent = `LAUNCHER v${v}`;
+    const v = await window.launcher.getVersion();
+    S.launcherVersion = v;
+    document.getElementById('launcherVerDisplay').textContent = `LAUNCHER v${v}`;
+    document.getElementById('launcherVerStrip').textContent = `v${v}`;
 
-  setupLauncherUpdateListeners();
-  await loadGameState();
+    S.settings = await window.launcher.getSettings();
+    updateInstallDirDisplay();
+
+    setupLauncherUpdateListeners();
+
+    // If install dir was auto-changed due to permissions, update settings
+    window.launcher.on('install-dir-changed', (newDir) => {
+        S.settings.installDir = newDir;
+        updateInstallDirDisplay();
+    });
+
+    await loadGameState();
 });
 
 // ─── LAUNCHER AUTO-UPDATE ─────────────────────────────────────────────────────
 function setupLauncherUpdateListeners() {
-  window.launcher.on('launcher-update-available', (info) => {
-    S.launcherUpdateState = 'available';
-    el.updateSubtitle().textContent = `v${S.launcherVersion} → v${info.version} AVAILABLE`;
-    el.launcherUpdateModal().classList.add('show');
-  });
-
-  window.launcher.on('launcher-update-not-available', () => {
-    S.launcherUpdateState = 'idle';
-  });
-
-  window.launcher.on('launcher-download-progress', (p) => {
-    el.launcherProgress().style.display = 'block';
-    el.launcherProgressFill().style.width = p.percent + '%';
-    el.launcherProgressPct().textContent = p.percent + '%';
-    el.launcherUpdateBtn().textContent = `DOWNLOADING... ${p.percent}%`;
-    el.launcherUpdateBtn().disabled = true;
-  });
-
-  window.launcher.on('launcher-update-downloaded', () => {
-    S.launcherUpdateState = 'ready';
-    el.launcherProgress().style.display = 'none';
-    el.launcherReadyMsg().style.display = 'block';
-    el.launcherUpdateBtn().textContent = 'RESTART & INSTALL';
-    el.launcherUpdateBtn().disabled = false;
-  });
-
-  window.launcher.on('launcher-update-error', (msg) => {
-    console.error('Launcher update error:', msg);
-    el.launcherUpdateBtn().textContent = 'RETRY UPDATE';
-    el.launcherUpdateBtn().disabled = false;
-    S.launcherUpdateState = 'available';
-  });
+    window.launcher.on('launcher-update-available', (info) => {
+        S.launcherUpdateState = 'available';
+        document.getElementById('updateSubtitle').textContent = `v${S.launcherVersion} → v${info.version} AVAILABLE`;
+        document.getElementById('launcherUpdateModal').classList.add('show');
+    });
+    window.launcher.on('launcher-update-not-available', () => { S.launcherUpdateState = 'idle'; });
+    window.launcher.on('launcher-download-progress', (p) => {
+        document.getElementById('launcherProgress').style.display = 'block';
+        document.getElementById('launcherProgressFill').style.width = p.percent + '%';
+        document.getElementById('launcherProgressPct').textContent = p.percent + '%';
+        document.getElementById('launcherUpdateBtn').textContent = `DOWNLOADING... ${p.percent}%`;
+        document.getElementById('launcherUpdateBtn').disabled = true;
+    });
+    window.launcher.on('launcher-update-downloaded', () => {
+        S.launcherUpdateState = 'ready';
+        document.getElementById('launcherProgress').style.display = 'none';
+        document.getElementById('launcherReadyMsg').style.display = 'block';
+        document.getElementById('launcherUpdateBtn').textContent = 'RESTART & INSTALL';
+        document.getElementById('launcherUpdateBtn').disabled = false;
+    });
+    window.launcher.on('launcher-update-error', () => {
+        document.getElementById('launcherUpdateBtn').textContent = 'RETRY UPDATE';
+        document.getElementById('launcherUpdateBtn').disabled = false;
+        S.launcherUpdateState = 'available';
+    });
 }
 
-// Called from HTML onclick
 window.handleLauncherUpdate = async function () {
-  if (S.launcherUpdateState === 'ready') {
-    await window.launcher.installLauncherUpdate();
-  } else if (S.launcherUpdateState === 'available') {
-    S.launcherUpdateState = 'downloading';
-    el.launcherUpdateBtn().textContent = 'STARTING DOWNLOAD...';
-    el.launcherUpdateBtn().disabled = true;
-    await window.launcher.downloadLauncherUpdate();
-  }
+    if (S.launcherUpdateState === 'ready') {
+        await window.launcher.installLauncherUpdate();
+    } else if (S.launcherUpdateState === 'available') {
+        S.launcherUpdateState = 'downloading';
+        document.getElementById('launcherUpdateBtn').textContent = 'STARTING...';
+        document.getElementById('launcherUpdateBtn').disabled = true;
+        await window.launcher.downloadLauncherUpdate();
+    }
 };
 
 // ─── LOAD GAME STATE ──────────────────────────────────────────────────────────
 async function loadGameState() {
-  let manifest;
-  try {
-    manifest = await window.launcher.fetchGameManifest();
-    S.manifest = manifest;
-  } catch (err) {
-    console.error('Manifest fetch failed:', err);
-    setStatus('error', 'CANNOT REACH SERVER');
-    el.btnMain().classList.add('btn-disabled');
-    el.btnMainText().textContent = 'OFFLINE';
-    return;
-  }
+    let manifest;
+    try {
+        manifest = await window.launcher.fetchGameManifest();
+        S.manifest = manifest;
+    } catch (err) {
+        console.error('Manifest fetch failed:', err);
+        setStatus('error', 'CANNOT REACH SERVER');
+        document.getElementById('btnMain').classList.add('btn-disabled');
+        document.getElementById('btnMainText').textContent = 'OFFLINE';
+        document.getElementById('stripStatus').textContent = 'OFFLINE';
+        return;
+    }
 
-  S.localState = await window.launcher.getGameState();
+    S.localState = await window.launcher.getGameState();
 
-  // Update strip version
-  el.stripGameVer().textContent = `v${manifest.latestVersion}`;
+    document.getElementById('stripGameVer').textContent = `v${manifest.latestVersion}`;
+    document.getElementById('stripGameVerTag').textContent = `v${manifest.latestVersion} Latest`;
 
-  // Determine state
-  if (!S.localState.installed) {
-    setAppState('install');
-  } else if (S.localState.version !== manifest.latestVersion) {
-    setAppState('update');
-  } else {
-    setAppState('play');
-  }
+    if (!S.localState.installed) {
+        setAppState('install');
+    } else if (S.localState.version !== manifest.latestVersion) {
+        setAppState('update');
+    } else {
+        setAppState('play');
+    }
 
-  // Populate changelog
-  renderChangelog(manifest.changelog);
+    renderChangelog(manifest.changelog);
+    updateSettingsPanel();
 }
 
 // ─── SET APP STATE ────────────────────────────────────────────────────────────
 function setAppState(state) {
-  S.appState = state;
-  const btn = el.btnMain();
-  const text = el.btnMainText();
+    S.appState = state;
+    const btn = document.getElementById('btnMain');
+    const text = document.getElementById('btnMainText');
 
-  // Reset button
-  btn.className = 'btn-main';
-  el.progressZone().classList.add('hidden');
-  btn.classList.remove('hidden');
-  el.btnCloseGame().classList.add('hidden');
-  S.gameRunning = false;
-  clearTimeout(S.closeGameTimer);
+    btn.className = 'btn-main';
+    document.getElementById('progressZone').classList.add('hidden');
+    btn.classList.remove('hidden');
+    document.getElementById('btnCloseGame').classList.add('hidden');
+    S.gameRunning = false;
+    clearTimeout(S.closeGameTimer);
 
-  if (state === 'play') {
-    text.textContent = 'LAUNCH';
-    setStatus('ready', `INSTALLED  ·  v${S.localState?.version || ''}`);
-    el.secondaryBtns().style.display = 'flex';
-    el.stripStatus().textContent = 'INSTALLED';
-  }
-  else if (state === 'update') {
-    btn.classList.add('btn-update');
-    text.textContent = 'UPDATE';
-    setStatus('warning', `UPDATE REQUIRED  ·  v${S.manifest?.latestVersion}`);
-    el.secondaryBtns().style.display = 'none';
-    el.stripStatus().textContent = 'UPDATE AVAIL';
-  }
-  else if (state === 'install') {
-    btn.classList.add('btn-install');
-    text.textContent = 'INSTALL';
-    setStatus('error', 'NOT INSTALLED');
-    el.secondaryBtns().style.display = 'none';
-    el.stripStatus().textContent = 'NOT INSTALLED';
-  }
+    if (state === 'play') {
+        text.textContent = 'LAUNCH';
+        setStatus('ready', `INSTALLED  ·  v${S.localState?.version || ''}`);
+        document.getElementById('secondaryBtns').style.display = 'flex';
+        document.getElementById('stripStatus').textContent = 'INSTALLED';
+        document.getElementById('uninstallSection').style.display = 'block';
+    } else if (state === 'update') {
+        btn.classList.add('btn-update');
+        text.textContent = 'UPDATE';
+        setStatus('warning', `UPDATE REQUIRED  ·  v${S.manifest?.latestVersion}`);
+        document.getElementById('secondaryBtns').style.display = 'none';
+        document.getElementById('stripStatus').textContent = 'UPDATE AVAIL';
+        document.getElementById('uninstallSection').style.display = 'block';
+    } else if (state === 'install') {
+        btn.classList.add('btn-install');
+        text.textContent = 'INSTALL';
+        setStatus('error', 'NOT INSTALLED');
+        document.getElementById('secondaryBtns').style.display = 'none';
+        document.getElementById('stripStatus').textContent = 'NOT INSTALLED';
+        document.getElementById('uninstallSection').style.display = 'none';
+    }
 }
 
 function setStatus(type, text) {
-  const dot = el.statusDot();
-  dot.className = 'status-dot';
-  dot.style.background = '';
-  dot.style.boxShadow = '';
-
-  if (type === 'ready') {
-    dot.style.background = 'var(--white)';
-    dot.style.boxShadow = '0 0 8px var(--white)';
-  } else if (type === 'warning') {
-    dot.classList.add('warning');
-  } else if (type === 'error') {
-    dot.classList.add('error');
-  } else if (type === 'running') {
-    dot.classList.add('running');
-  }
-  el.statusText().textContent = text;
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot';
+    dot.style.background = '';
+    dot.style.boxShadow = '';
+    if (type === 'ready') { dot.style.background = 'var(--white)'; dot.style.boxShadow = '0 0 8px rgba(255,255,255,0.6)'; }
+    else if (type === 'warning') dot.classList.add('warning');
+    else if (type === 'error') dot.classList.add('error');
+    else if (type === 'running') dot.classList.add('running');
+    document.getElementById('statusText').textContent = text;
 }
 
-// ─── MAIN ACTION BUTTON ───────────────────────────────────────────────────────
+// ─── MAIN ACTION ──────────────────────────────────────────────────────────────
 window.handleMainAction = async function () {
-  if (S.appState === 'play') {
-    await launchGame();
-  } else if (S.appState === 'update' || S.appState === 'install') {
-    await startInstall();
-  }
+    if (S.appState === 'play') await launchGame();
+    else if (S.appState === 'update' || S.appState === 'install') await startInstall();
 };
 
-// ─── LAUNCH GAME ─────────────────────────────────────────────────────────────
+// ─── LAUNCH ───────────────────────────────────────────────────────────────────
 async function launchGame() {
-  try {
-    await window.launcher.launchGame();
-    setRunningState();
-  } catch (err) {
-    console.error('Launch failed:', err);
-  }
-}
-
-function setRunningState() {
-  S.gameRunning = true;
-  S.appState = 'running';
-
-  el.btnMain().classList.add('btn-disabled');
-  el.btnMainText().textContent = 'RUNNING';
-  setStatus('running', 'GAME IS RUNNING');
-  el.stripStatus().textContent = 'RUNNING';
-
-  // Show close button after 3 seconds (safety delay — prevents instant kill)
-  S.closeGameTimer = setTimeout(() => {
-    if (S.gameRunning) {
-      el.btnCloseGame().classList.remove('hidden');
+    try {
+        await window.launcher.launchGame();
+        S.gameRunning = true;
+        S.appState = 'running';
+        document.getElementById('btnMain').classList.add('btn-disabled');
+        document.getElementById('btnMainText').textContent = 'RUNNING';
+        setStatus('running', 'GAME IS RUNNING');
+        document.getElementById('stripStatus').textContent = 'RUNNING';
+        S.closeGameTimer = setTimeout(() => {
+            if (S.gameRunning) document.getElementById('btnCloseGame').classList.remove('hidden');
+        }, 3000);
+    } catch (err) {
+        console.error('Launch failed:', err);
+        setStatus('error', 'LAUNCH FAILED — CHECK INSTALL');
     }
-  }, 3000);
 }
 
-// ─── CLOSE GAME ───────────────────────────────────────────────────────────────
 window.handleCloseGame = async function () {
-  try {
-    await window.launcher.closeGame();
-  } catch (err) {
-    console.error('Close game error:', err);
-  }
-  S.gameRunning = false;
-  clearTimeout(S.closeGameTimer);
-  el.btnCloseGame().classList.add('hidden');
-  setAppState('play');
+    try { await window.launcher.closeGame(); } catch (_) { }
+    S.gameRunning = false;
+    clearTimeout(S.closeGameTimer);
+    document.getElementById('btnCloseGame').classList.add('hidden');
+    setAppState('play');
 };
 
-// ─── INSTALL / UPDATE GAME ────────────────────────────────────────────────────
+// ─── INSTALL ──────────────────────────────────────────────────────────────────
 async function startInstall() {
-  if (!S.manifest) return;
-  S.appState = 'installing';
+    if (!S.manifest) return;
+    S.appState = 'installing';
 
-  el.btnMain().classList.add('hidden');
-  el.progressZone().classList.remove('hidden');
-  el.secondaryBtns().style.display = 'none';
-  setStatus('ready', 'DOWNLOADING...');
-  el.stripStatus().textContent = 'DOWNLOADING';
+    document.getElementById('btnMain').classList.add('hidden');
+    document.getElementById('progressZone').classList.remove('hidden');
+    document.getElementById('secondaryBtns').style.display = 'none';
+    setStatus('ready', 'DOWNLOADING...');
+    document.getElementById('stripStatus').textContent = 'DOWNLOADING';
 
-  // Listen for progress
-  window.launcher.on('game-download-progress', (data) => {
-    el.dlFill().style.width = data.percent + '%';
-    el.dlPct().textContent = data.percent + '%';
-    const mb = Math.round((data.downloaded / 1024 / 1024));
-    const total = Math.round((data.total / 1024 / 1024));
-    el.dlLabel().textContent = `${mb} MB / ${total} MB`;
-  });
-
-  // Listen for completion
-  window.launcher.on('game-install-complete', async (data) => {
-    S.localState = await window.launcher.getGameState();
-    el.stripGameVer().textContent = `v${data.version}`;
-    setAppState('play');
-  });
-
-  try {
-    await window.launcher.installGame({
-      version: S.manifest.latestVersion,
-      downloadUrl: S.manifest.downloadUrl,
-      totalSize: S.manifest.totalSize,
+    window.launcher.on('game-download-progress', (data) => {
+        document.getElementById('dlFill').style.width = data.percent + '%';
+        document.getElementById('dlPct').textContent = data.percent + '%';
+        const mb = Math.round(data.downloaded / 1024 / 1024);
+        const total = Math.round(data.total / 1024 / 1024);
+        document.getElementById('dlLabel').textContent = total > 0
+            ? `${mb} MB / ${total} MB`
+            : `${mb} MB downloaded`;
     });
-  } catch (err) {
-    console.error('Install failed:', err);
-    setAppState('install');
-  }
+
+    window.launcher.on('game-install-complete', async (data) => {
+        S.localState = await window.launcher.getGameState();
+        document.getElementById('stripGameVer').textContent = `v${data.version}`;
+        setAppState('play');
+        updateSettingsPanel();
+    });
+
+    try {
+        await window.launcher.installGame({
+            version: S.manifest.latestVersion,
+            downloadUrl: S.manifest.downloadUrl,
+            totalSize: S.manifest.totalSize,
+        });
+    } catch (err) {
+        console.error('Install failed:', err);
+        setStatus('error', 'DOWNLOAD FAILED — RETRY');
+        setAppState('install');
+    }
 }
+
+// ─── UNINSTALL ────────────────────────────────────────────────────────────────
+window.promptUninstall = function () {
+    document.getElementById('uninstallPath').textContent =
+        `Install path: ${S.settings.installDir}`;
+    document.getElementById('settingsOverlay').classList.remove('show');
+    document.getElementById('uninstallModal').classList.add('show');
+};
+
+window.confirmUninstall = async function () {
+    document.getElementById('uninstallModal').classList.remove('show');
+    setStatus('error', 'UNINSTALLING...');
+    document.getElementById('stripStatus').textContent = 'UNINSTALLING';
+
+    try {
+        await window.launcher.uninstallGame();
+        S.localState = { installed: false };
+        setAppState('install');
+        updateSettingsPanel();
+    } catch (err) {
+        console.error('Uninstall failed:', err);
+        setStatus('error', 'UNINSTALL FAILED');
+    }
+};
+
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+window.openSettings = function () {
+    S.pendingInstallDir = null;
+    updateSettingsPanel();
+    document.getElementById('settingsSaveBtn').textContent = 'SAVE CHANGES';
+    document.getElementById('settingsSaveBtn').classList.remove('has-changes');
+    document.getElementById('reinstallSection').style.display = 'none';
+    document.getElementById('settingsOverlay').classList.add('show');
+};
+
+window.closeSettings = function (e) {
+    if (!e || e.target === document.getElementById('settingsOverlay')) {
+        S.pendingInstallDir = null;
+        document.getElementById('settingsOverlay').classList.remove('show');
+        document.getElementById('installDirDisplay').textContent = S.settings.installDir;
+    }
+};
+
+window.browseInstallDir = async function () {
+    const chosen = await window.launcher.pickInstallDir();
+    if (!chosen) return;
+    S.pendingInstallDir = chosen;
+    document.getElementById('installDirDisplay').textContent = chosen;
+    document.getElementById('settingsSaveBtn').classList.add('has-changes');
+    document.getElementById('settingsSaveBtn').textContent = 'SAVE CHANGES ●';
+    if (S.localState?.installed && chosen !== S.settings.installDir) {
+        document.getElementById('reinstallSection').style.display = 'block';
+    }
+};
+
+window.saveSettings = async function () {
+    if (!S.pendingInstallDir) {
+        document.getElementById('settingsOverlay').classList.remove('show');
+        return;
+    }
+    S.settings = await window.launcher.saveSettings({ installDir: S.pendingInstallDir });
+    S.pendingInstallDir = null;
+    updateInstallDirDisplay();
+    updateSettingsPanel();
+    document.getElementById('settingsSaveBtn').textContent = 'SAVE CHANGES';
+    document.getElementById('settingsSaveBtn').classList.remove('has-changes');
+    document.getElementById('settingsOverlay').classList.remove('show');
+    document.getElementById('reinstallSection').style.display = 'none';
+
+    // Re-check game state with new path
+    S.localState = await window.launcher.getGameState();
+    if (!S.localState.installed) setAppState('install');
+    else if (S.localState.version !== S.manifest?.latestVersion) setAppState('update');
+    else setAppState('play');
+};
+
+function updateInstallDirDisplay() {
+    const dir = S.settings.installDir || '—';
+    document.getElementById('installDirDisplay').textContent = dir;
+    const parts = dir.replace(/\\/g, '/').split('/').filter(Boolean);
+    const short = parts.slice(-2).join('/');
+    document.getElementById('stripInstallDir').textContent = short || dir;
+}
+
+function updateSettingsPanel() {
+    document.getElementById('settingsLauncherVer').textContent = `v${S.launcherVersion}`;
+    document.getElementById('settingsGameVer').textContent =
+        S.localState?.installed ? `v${S.localState.version}` : 'Not installed';
+    document.getElementById('settingsInstallPath').textContent = S.settings.installDir || '—';
+    document.getElementById('installDirDisplay').textContent = S.settings.installDir || '—';
+    document.getElementById('uninstallSection').style.display =
+        S.localState?.installed ? 'block' : 'none';
+}
+
+window.openInstallFolder = function () {
+    const dir = S.settings.installDir;
+    if (dir) window.launcher.openExternal(`file://${dir}`);
+};
 
 // ─── CHANGELOG ────────────────────────────────────────────────────────────────
 function renderChangelog(changelog) {
-  const container = document.getElementById('changelogContent');
-  if (!changelog || changelog.length === 0) return;
-
-  container.innerHTML = changelog.map((entry, i) => `
+    const container = document.getElementById('changelogContent');
+    if (!changelog || changelog.length === 0) {
+        container.innerHTML = '<p style="font-family:JetBrains Mono,monospace;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px">NO CHANGELOG</p>';
+        return;
+    }
+    container.innerHTML = changelog.map((entry, i) => `
     <div class="cl-entry">
       <div class="cl-meta">
         <div class="cl-ver">v${entry.version}</div>
@@ -294,17 +367,9 @@ function renderChangelog(changelog) {
   `).join('');
 }
 
-// ─── CHANGELOG DRAWER ─────────────────────────────────────────────────────────
-window.openDrawer = function () {
-  el.drawerOverlay().classList.add('open');
-};
+window.openDrawer = function () { document.getElementById('drawerOverlay').classList.add('open'); };
 window.closeDrawer = function (e) {
-  if (!e || e.target === el.drawerOverlay()) {
-    el.drawerOverlay().classList.remove('open');
-  }
-};
-
-// ─── OPEN EXTERNAL ────────────────────────────────────────────────────────────
-window.openExternal = function (url) {
-  window.launcher.openExternal(url);
+    if (!e || e.target === document.getElementById('drawerOverlay')) {
+        document.getElementById('drawerOverlay').classList.remove('open');
+    }
 };

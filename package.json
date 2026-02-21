@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Early Tags VR Launcher",
   "main": "main.js",
+  "author": "Tdizdollar",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win",
@@ -10,7 +11,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.1.7",
-    "megajs": "^1.3.9"
+    "megajs": "^1.1.5"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -26,11 +27,17 @@
       "assets/**/*"
     ],
     "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "assets/icon.ico",
-      "artifactName": "EarlyTagsLauncher-Setup-${version}.exe"
+      "target": [ "nsis" ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowDirChange": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Early Tags Launcher",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false
     },
     "publish": {
       "provider": "github",

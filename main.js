@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -11,65 +11,85 @@ const GAME_MANIFEST_URL = 'https://tdizdollar.github.io/EarlyTags/server/game-ma
 const GAME_EXE_NAME = 'Old Tag.exe';
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GAMES_DIR = path.join(app.getPath('userData'), 'game');
+const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+const DEFAULT_GAMES_DIR = path.join('C:\\Program Files', 'Early Tags');
+
 let mainWindow;
 let gameProcess = null;
 
-function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1100,
-        height: 680,
-        minWidth: 860,
-        minHeight: 580,
-        frame: false,
-        backgroundColor: '#000000',
-        show: false,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js'),
-        },
-        icon: path.join(__dirname, 'assets', 'icon.png'),
-    });
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+    }
+  } catch (_) {}
+  return { installDir: DEFAULT_GAMES_DIR };
+}
 
-    mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-    mainWindow.once('ready-to-show', () => {
-        mainWindow.show();
-        checkLauncherUpdate();
-    });
+function saveSettings(settings) {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+}
+
+function getInstallDir() {
+  return loadSettings().installDir || DEFAULT_GAMES_DIR;
+}
+
+// ─── WINDOW ───────────────────────────────────────────────────────────────────
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1100,
+    height: 680,
+    minWidth: 860,
+    minHeight: 580,
+    frame: false,
+    backgroundColor: '#000000',
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+  });
+
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    checkLauncherUpdate();
+  });
 }
 
 app.whenReady().then(() => {
-    if (!fs.existsSync(GAMES_DIR)) fs.mkdirSync(GAMES_DIR, { recursive: true });
-    createWindow();
+  createWindow();
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') app.quit();
 });
 
 // ─── LAUNCHER AUTO-UPDATE ─────────────────────────────────────────────────────
 function checkLauncherUpdate() {
-    autoUpdater.checkForUpdates().catch(err => console.log('Update check failed:', err.message));
+  autoUpdater.checkForUpdates().catch(err => console.log('Update check failed:', err.message));
 }
 autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('launcher-update-available', { version: info.version });
+  mainWindow.webContents.send('launcher-update-available', { version: info.version });
 });
 autoUpdater.on('update-not-available', () => {
-    mainWindow.webContents.send('launcher-update-not-available');
+  mainWindow.webContents.send('launcher-update-not-available');
 });
 autoUpdater.on('download-progress', (p) => {
-    mainWindow.webContents.send('launcher-download-progress', {
-        percent: Math.round(p.percent),
-        transferred: p.transferred,
-        total: p.total,
-    });
+  mainWindow.webContents.send('launcher-download-progress', {
+    percent: Math.round(p.percent),
+    transferred: p.transferred,
+    total: p.total,
+  });
 });
 autoUpdater.on('update-downloaded', () => {
-    mainWindow.webContents.send('launcher-update-downloaded');
+  mainWindow.webContents.send('launcher-update-downloaded');
 });
 autoUpdater.on('error', (err) => {
-    mainWindow.webContents.send('launcher-update-error', err.message);
+  mainWindow.webContents.send('launcher-update-error', err.message);
 });
 
 ipcMain.handle('download-launcher-update', () => autoUpdater.downloadUpdate());
@@ -78,200 +98,262 @@ ipcMain.handle('install-launcher-update', () => autoUpdater.quitAndInstall());
 // ─── WINDOW CONTROLS ──────────────────────────────────────────────────────────
 ipcMain.handle('window-minimize', () => mainWindow.minimize());
 ipcMain.handle('window-maximize', () => {
-    mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+  mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
 });
 ipcMain.handle('window-close', () => mainWindow.close());
 
+// ─── SETTINGS IPC ─────────────────────────────────────────────────────────────
+ipcMain.handle('get-settings', () => loadSettings());
+
+ipcMain.handle('save-settings', (_, newSettings) => {
+  const merged = { ...loadSettings(), ...newSettings };
+  saveSettings(merged);
+  if (merged.installDir && !fs.existsSync(merged.installDir)) {
+    try { fs.mkdirSync(merged.installDir, { recursive: true }); } catch (_) {}
+  }
+  return merged;
+});
+
+ipcMain.handle('pick-install-dir', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose Install Location',
+    defaultPath: getInstallDir(),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
 // ─── GAME MANIFEST ────────────────────────────────────────────────────────────
 ipcMain.handle('fetch-game-manifest', async () => {
-    return new Promise((resolve, reject) => {
-        const url = new URL(GAME_MANIFEST_URL);
-        const client = url.protocol === 'https:' ? https : http;
-        client.get(GAME_MANIFEST_URL, { timeout: 10000 }, (res) => {
-            let data = '';
-            res.on('data', c => data += c);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); }
-                catch { reject(new Error('Invalid manifest')); }
-            });
-        }).on('error', reject);
-    });
+  return new Promise((resolve, reject) => {
+    const url = new URL(GAME_MANIFEST_URL);
+    const client = url.protocol === 'https:' ? https : http;
+    client.get(GAME_MANIFEST_URL, { timeout: 10000 }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('Invalid manifest')); }
+      });
+    }).on('error', reject);
+  });
 });
 
 // ─── LOCAL GAME STATE ─────────────────────────────────────────────────────────
 ipcMain.handle('get-game-state', async () => {
-    const statePath = path.join(GAMES_DIR, 'installed.json');
-    if (!fs.existsSync(statePath)) return { installed: false };
-    try {
-        const d = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-        return { installed: true, version: d.version, installPath: d.installPath };
-    } catch { return { installed: false }; }
+  const installDir = getInstallDir();
+  const statePath = path.join(installDir, 'installed.json');
+  if (!fs.existsSync(statePath)) return { installed: false };
+  try {
+    const d = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    return { installed: true, version: d.version, installPath: installDir };
+  } catch { return { installed: false }; }
 });
 
-// ─── INSTALL GAME (downloads from Mega.nz) ────────────────────────────────────
+// ─── INSTALL GAME (Mega.nz) ───────────────────────────────────────────────────
 ipcMain.handle('install-game', async (_, { version, downloadUrl, totalSize }) => {
-    const zipPath = path.join(GAMES_DIR, `game-${version}.zip`);
+  const installDir = getInstallDir();
 
-    return new Promise(async (resolve, reject) => {
-        try {
-            const { File } = require('megajs');
+  // Make sure install dir exists
+  if (!fs.existsSync(installDir)) {
+    try {
+      fs.mkdirSync(installDir, { recursive: true });
+    } catch (err) {
+      // If Program Files requires admin, fall back to AppData
+      const fallback = path.join(app.getPath('userData'), 'game');
+      fs.mkdirSync(fallback, { recursive: true });
+      saveSettings({ ...loadSettings(), installDir: fallback });
+      mainWindow.webContents.send('install-dir-changed', fallback);
+    }
+  }
 
-            const file = File.fromURL(downloadUrl);
-            await file.loadAttributes();
+  const actualDir = getInstallDir();
+  const zipPath = path.join(actualDir, `game-${version}.zip`);
 
-            const total = file.size || totalSize || 0;
-            let downloaded = 0;
+  return new Promise(async (resolve, reject) => {
+    try {
+      const { File } = require('megajs');
 
-            const writeStream = fs.createWriteStream(zipPath);
-            const readStream = file.download();
+      const file = File.fromURL(downloadUrl);
+      await file.loadAttributes();
 
-            readStream.on('data', (chunk) => {
-                downloaded += chunk.length;
-                writeStream.write(chunk);
-                const percent = total > 0 ? Math.round((downloaded / total) * 100) : 0;
-                mainWindow.webContents.send('game-download-progress', {
-                    percent,
-                    downloaded,
-                    total,
-                });
-            });
+      const total = file.size || totalSize || 0;
+      let downloaded = 0;
 
-            readStream.on('error', (err) => {
-                writeStream.destroy();
-                reject(err);
-            });
+      const writeStream = fs.createWriteStream(zipPath);
+      const readStream = file.download();
 
-            readStream.on('end', () => {
-                writeStream.end();
-                writeStream.on('finish', () => {
-                    extractGame(zipPath, GAMES_DIR)
-                        .then(() => {
-                            fs.writeFileSync(
-                                path.join(GAMES_DIR, 'installed.json'),
-                                JSON.stringify({
-                                    version,
-                                    installPath: GAMES_DIR,
-                                    installedAt: Date.now(),
-                                })
-                            );
-                            mainWindow.webContents.send('game-install-complete', { version });
-                            resolve({ success: true });
-                        })
-                        .catch(reject);
-                });
-            });
+      readStream.on('data', (chunk) => {
+        downloaded += chunk.length;
+        writeStream.write(chunk);
+        const percent = total > 0 ? Math.round((downloaded / total) * 100) : 0;
+        mainWindow.webContents.send('game-download-progress', { percent, downloaded, total });
+      });
 
-        } catch (err) {
-            console.error('Mega download failed:', err);
-            reject(err);
-        }
-    });
+      readStream.on('error', (err) => {
+        writeStream.destroy();
+        reject(err);
+      });
+
+      readStream.on('end', () => {
+        writeStream.end();
+        writeStream.on('finish', () => {
+          extractGame(zipPath, actualDir)
+            .then(() => {
+              fs.writeFileSync(
+                path.join(actualDir, 'installed.json'),
+                JSON.stringify({ version, installPath: actualDir, installedAt: Date.now() })
+              );
+              mainWindow.webContents.send('game-install-complete', { version });
+              resolve({ success: true });
+            })
+            .catch(reject);
+        });
+      });
+
+    } catch (err) {
+      console.error('Mega download failed:', err);
+      reject(err);
+    }
+  });
 });
 
 function extractGame(zipPath, destDir) {
-    return new Promise((resolve, reject) => {
-        const cmd = `powershell -command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`;
-        exec(cmd, (err) => {
-            if (err) return reject(err);
-            try { fs.unlinkSync(zipPath); } catch (_) { }
-            resolve();
-        });
+  return new Promise((resolve, reject) => {
+    const cmd = `powershell -command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`;
+    exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (err) => {
+      if (err) return reject(err);
+      try { fs.unlinkSync(zipPath); } catch (_) {}
+      resolve();
     });
+  });
 }
+
+// ─── UNINSTALL GAME ───────────────────────────────────────────────────────────
+ipcMain.handle('uninstall-game', async () => {
+  const installDir = getInstallDir();
+
+  return new Promise((resolve) => {
+    // Delete all game files in the install directory
+    // We keep the installed.json removal last so we can detect partial uninstalls
+    try {
+      if (fs.existsSync(installDir)) {
+        const files = fs.readdirSync(installDir);
+        for (const file of files) {
+          const filePath = path.join(installDir, file);
+          try {
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+              fs.rmSync(filePath, { recursive: true, force: true });
+            } else {
+              fs.unlinkSync(filePath);
+            }
+          } catch (_) {}
+        }
+        // Try to remove the directory itself if empty
+        try { fs.rmdirSync(installDir); } catch (_) {}
+      }
+      resolve({ success: true });
+    } catch (err) {
+      resolve({ success: false, message: err.message });
+    }
+  });
+});
 
 // ─── FIND STEAMVR OPENXR RUNTIME ──────────────────────────────────────────────
 function findSteamVRRuntime() {
-    const runtimeRelPath = 'steamapps\\common\\SteamVR\\tools\\openxr\\runtime\\win64\\openxr_runtime.json';
+  const runtimeRelPath = 'steamapps\\common\\SteamVR\\tools\\openxr\\runtime\\win64\\openxr_runtime.json';
 
-    const steamPaths = [
-        'C:\\Program Files (x86)\\Steam',
-        'C:\\Program Files\\Steam',
-        'D:\\Steam',
-        'D:\\Program Files (x86)\\Steam',
-        'E:\\Steam',
-    ];
+  const steamPaths = [
+    'C:\\Program Files (x86)\\Steam',
+    'C:\\Program Files\\Steam',
+    'D:\\Steam',
+    'D:\\Program Files (x86)\\Steam',
+    'E:\\Steam',
+  ];
 
-    for (const steamPath of steamPaths) {
-        const fullPath = path.join(steamPath, runtimeRelPath);
-        if (fs.existsSync(fullPath)) return fullPath;
+  for (const steamPath of steamPaths) {
+    const fullPath = path.join(steamPath, runtimeRelPath);
+    if (fs.existsSync(fullPath)) return fullPath;
+  }
+
+  try {
+    const regOutput = execSync(
+      'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath',
+      { encoding: 'utf8' }
+    );
+    const match = regOutput.match(/InstallPath\s+REG_SZ\s+(.+)/);
+    if (match) {
+      const fullPath = path.join(match[1].trim(), runtimeRelPath);
+      if (fs.existsSync(fullPath)) return fullPath;
     }
+  } catch (_) {}
 
-    try {
-        const regOutput = execSync(
-            'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath',
-            { encoding: 'utf8' }
-        );
-        const match = regOutput.match(/InstallPath\s+REG_SZ\s+(.+)/);
-        if (match) {
-            const fullPath = path.join(match[1].trim(), runtimeRelPath);
-            if (fs.existsSync(fullPath)) return fullPath;
-        }
-    } catch (_) { }
-
-    return null;
+  return null;
 }
 
-// ─── LAUNCH GAME (forces SteamVR OpenXR runtime) ─────────────────────────────
+// ─── LAUNCH GAME ─────────────────────────────────────────────────────────────
 ipcMain.handle('launch-game', async () => {
-    return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    const installDir = getInstallDir();
+    const gameExePath = path.join(installDir, GAME_EXE_NAME);
 
-        const gameExePath = path.join(GAMES_DIR, GAME_EXE_NAME);
+    console.log('Looking for game at:', gameExePath);
 
-        if (!fs.existsSync(gameExePath)) {
-            return reject(new Error(`Game exe not found at: ${gameExePath}`));
-        }
+    if (!fs.existsSync(gameExePath)) {
+      return reject(new Error(`Game not found at: ${gameExePath}\n\nMake sure the game is installed in: ${installDir}`));
+    }
 
-        // Launch SteamVR first (250820 is SteamVR's permanent App ID)
-        await shell.openExternal('steam://run/250820');
+    // Launch SteamVR first
+    await shell.openExternal('steam://run/250820');
+    await new Promise(r => setTimeout(r, 4000));
 
-        // Wait for SteamVR to initialize
-        await new Promise(r => setTimeout(r, 4000));
+    // Force SteamVR OpenXR runtime
+    const steamVRRuntimePath = findSteamVRRuntime();
+    const env = { ...process.env };
+    if (steamVRRuntimePath) {
+      env.XR_RUNTIME_JSON = steamVRRuntimePath;
+      console.log('Using SteamVR runtime:', steamVRRuntimePath);
+    } else {
+      console.warn('SteamVR runtime not found');
+    }
 
-        // Force SteamVR OpenXR runtime via environment variable
-        const steamVRRuntimePath = findSteamVRRuntime();
-        const env = { ...process.env };
-        if (steamVRRuntimePath) {
-            env.XR_RUNTIME_JSON = steamVRRuntimePath;
-            console.log('Forcing SteamVR OpenXR runtime:', steamVRRuntimePath);
-        } else {
-            console.warn('SteamVR runtime not found — launching with system default runtime');
-        }
-
-        // Launch Old Tag.exe with forced runtime
-        gameProcess = spawn(gameExePath, [], {
-            detached: true,
-            stdio: 'ignore',
-            env: env,
-        });
-
-        gameProcess.unref();
-
-        gameProcess.on('error', (err) => {
-            gameProcess = null;
-            reject(err);
-        });
-
-        setTimeout(() => resolve({ success: true }), 1000);
+    gameProcess = spawn(`"${gameExePath}"`, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: env,
+      shell: true,
+      cwd: installDir, // Run from the game's directory (important for Unity games)
     });
+
+    gameProcess.unref();
+    gameProcess.on('error', (err) => {
+      gameProcess = null;
+      reject(err);
+    });
+
+    setTimeout(() => resolve({ success: true }), 1000);
+  });
 });
 
 // ─── CLOSE GAME ───────────────────────────────────────────────────────────────
 ipcMain.handle('close-game', async () => {
-    return new Promise((resolve) => {
-        if (gameProcess) {
-            try { gameProcess.kill('SIGTERM'); } catch (_) { }
-            gameProcess = null;
-            return resolve({ success: true });
-        }
-        exec(`taskkill /F /IM "${GAME_EXE_NAME}"`, (err) => {
-            resolve({ success: !err });
-        });
+  return new Promise((resolve) => {
+    if (gameProcess) {
+      try { gameProcess.kill('SIGTERM'); } catch (_) {}
+      gameProcess = null;
+      return resolve({ success: true });
+    }
+    exec(`taskkill /F /IM "Old Tag.exe"`, (err) => {
+      resolve({ success: !err });
     });
+  });
 });
 
 // ─── OPEN EXTERNAL ────────────────────────────────────────────────────────────
 ipcMain.handle('open-external', async (_, url) => {
-    await shell.openExternal(url);
+  await shell.openExternal(url);
 });
 
 // ─── GET APP VERSION ──────────────────────────────────────────────────────────
